@@ -1,294 +1,208 @@
-import os
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras import layers, models
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import train_test_split
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Conv2D, Flatten, Dropout, MaxPooling2D, Input
+from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras import layers, models, optimizers
-from tensorflow.keras.utils import to_categorical
 import matplotlib.pyplot as plt
 
-# Paths to Dataset
-train_dir = r"C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\train"
-valid_dir = r"C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\val"
-test_dir = r"C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\test"
+def load_triple_mnist():
+    # Replace this with actual loading of the Triple MNIST dataset
+    print("Loading Triple MNIST dataset...")
+    # Placeholder: Load standard MNIST for demonstration purposes
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2, random_state=42)
+    x_train = np.expand_dims(x_train, axis=-1) / 255.0
+    x_val = np.expand_dims(x_val, axis=-1) / 255.0
+    x_test = np.expand_dims(x_test, axis=-1) / 255.0
+    return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
-# Helper Function: Load Data
-def load_data(directory):
-    images = []
-    labels = []
-    for label in os.listdir(directory):
-        label_path = os.path.join(directory, label)
-        for img_file in os.listdir(label_path):
-            img_path = os.path.join(label_path, img_file)
-            img = tf.keras.utils.load_img(img_path, target_size=(28, 28), color_mode="grayscale")
-            img_array = tf.keras.utils.img_to_array(img)
-            images.append(img_array)
-            labels.append(int(label))
-    images = np.array(images, dtype="float32") / 255.0
-    labels = np.array(labels)
-    return images, labels
-
-# Load datasets
-X_train, y_train = load_data(train_dir)
-X_valid, y_valid = load_data(valid_dir)
-X_test, y_test = load_data(test_dir)
-
-# Decision Tree Model
-def decision_tree(X_train, y_train, X_valid, y_valid, X_test, y_test):
-    X_train_flat = X_train.reshape(X_train.shape[0], -1)
-    X_valid_flat = X_valid.reshape(X_valid.shape[0], -1)
-    X_test_flat = X_test.reshape(X_test.shape[0], -1)
-
-    dt_model = DecisionTreeClassifier()
-    dt_model.fit(X_train_flat, y_train)
-    y_pred = dt_model.predict(X_test_flat)
-
-    acc = accuracy_score(y_test, y_pred)
-    f1 = f1_score(y_test, y_pred, average="weighted")
-    print(f"Decision Tree - Accuracy: {acc}, F1 Score: {f1}")
-
-
-# Basic CNN Model
-def basic_cnn(X_train, y_train, X_valid, y_valid, X_test, y_test):
-    y_train_one_hot = to_categorical(y_train)
-    y_valid_one_hot = to_categorical(y_valid)
-    y_test_one_hot = to_categorical(y_test)
-
-    model = models.Sequential([
-        layers.Conv2D(32, (3, 3), activation="relu", input_shape=(28, 28, 1)),
-        layers.MaxPooling2D((2, 2)),
-        layers.Flatten(),
-        layers.Dense(128, activation="relu"),
-        layers.Dense(10, activation="softmax")
-    ])
-
-    model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
-    model.fit(X_train, y_train_one_hot, epochs=10, validation_data=(X_valid, y_valid_one_hot))
-
-    _, acc = model.evaluate(X_test, y_test_one_hot)
-    y_pred = np.argmax(model.predict(X_test), axis=1)
-    f1 = f1_score(y_test, y_pred, average="weighted")
-    print(f"Basic CNN - Accuracy: {acc}, F1 Score: {f1}")
-
-
-# Second CNN Model
-def second_cnn(X_train, y_train, X_valid, y_valid, X_test, y_test):
-    def split_image(image):
-        third = image.shape[1] // 3
-        return [image[:, :third], image[:, third:2 * third], image[:, 2 * third:]]
-
-    X_train_split = np.array([split_image(img) for img in X_train])
-    X_valid_split = np.array([split_image(img) for img in X_valid])
-    X_test_split = np.array([split_image(img) for img in X_test])
-
-    def build_model():
-        model = models.Sequential([
-            layers.Conv2D(32, (3, 3), activation="relu", input_shape=(28, 28, 1)),
-            layers.MaxPooling2D((2, 2)),
-            layers.Flatten(),
-            layers.Dense(128, activation="relu"),
-            layers.Dense(10, activation="softmax")
-        ])
-        return model
-
-    models_list = [build_model() for _ in range(3)]
-
-    for i, model in enumerate(models_list):
-        model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
-        model.fit(X_train_split[:, i], to_categorical(y_train), epochs=5, validation_data=(X_valid_split[:, i], to_categorical(y_valid)))
-
-    # Concatenate and evaluate
-    final_predictions = []
-    for i, model in enumerate(models_list):
-        predictions = np.argmax(model.predict(X_test_split[:, i]), axis=1)
-        final_predictions.append(predictions)
-
-    final_predictions = np.stack(final_predictions, axis=1)
-    acc = accuracy_score(y_test, final_predictions)
-    f1 = f1_score(y_test, final_predictions, average="weighted")
-    print(f"Second CNN - Accuracy: {acc}, F1 Score: {f1}")
-
-
-# Final CNN with Regularization and Augmentation
-# Final CNN with Regularization and Data Augmentation
-def final_cnn(X_train, y_train, X_valid, y_valid, X_test, y_test):
-    y_train_one_hot = to_categorical(y_train)
-    y_valid_one_hot = to_categorical(y_valid)
-    y_test_one_hot = to_categorical(y_test)
-
-    # Data Augmentation
-    datagen = ImageDataGenerator(
-        rotation_range=15,
-        width_shift_range=0.1,
-        height_shift_range=0.1,
-        zoom_range=0.2,
-        horizontal_flip=True
-    )
-    datagen.fit(X_train)
-
-    # Model Definition
-    model = models.Sequential([
-        layers.Conv2D(32, (3, 3), activation="relu", input_shape=(28, 28, 1)),
-        layers.MaxPooling2D((2, 2)),
-        layers.Conv2D(64, (3, 3), activation="relu"),
-        layers.MaxPooling2D((2, 2)),
-        layers.Flatten(),
-        layers.Dropout(0.5),  # Dropout Layer for Regularization
-        layers.Dense(128, activation="relu"),
-        layers.Dense(10, activation="softmax")
-    ])
-
-    model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
-
-    # Training with Augmentation
-    history = model.fit(datagen.flow(X_train, y_train_one_hot, batch_size=64),
-                        epochs=20, validation_data=(X_valid, y_valid_one_hot))
-
-    # Evaluate the model
-    _, acc = model.evaluate(X_test, y_test_one_hot)
-    y_pred = np.argmax(model.predict(X_test), axis=1)
-    f1 = f1_score(y_test, y_pred, average="weighted")
-    print(f"Final CNN - Accuracy: {acc}, F1 Score: {f1}")
-
-    # Plot Training and Validation Loss Curves
-    plt.figure(figsize=(10, 5))
+def plot_training_curves(history):
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 2, 1)
     plt.plot(history.history['loss'], label='Training Loss')
     plt.plot(history.history['val_loss'], label='Validation Loss')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
     plt.legend()
-    plt.title('Training and Validation Loss Curves')
+    plt.title('Loss Curves')
+
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['accuracy'], label='Training Accuracy')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+    plt.legend()
+    plt.title('Accuracy Curves')
     plt.show()
 
+def decision_tree_classifier(x_train, y_train, x_val, y_val, x_test, y_test):
+    print("Training Decision Tree...")
+    x_train_flat = x_train.reshape(x_train.shape[0], -1)
+    x_val_flat = x_val.reshape(x_val.shape[0], -1)
+    x_test_flat = x_test.reshape(x_test.shape[0], -1)
+    clf = DecisionTreeClassifier()
+    clf.fit(x_train_flat, y_train)
+    y_val_pred = clf.predict(x_val_flat)
+    y_test_pred = clf.predict(x_test_flat)
+    val_f1 = f1_score(y_val, y_val_pred, average='weighted')
+    test_f1 = f1_score(y_test, y_test_pred, average='weighted')
+    print(f"Decision Tree Validation F1 Score: {val_f1}, Test F1 Score: {test_f1}")
 
-# GAN Model
-# GAN (DCGAN) Implementation
-def gan_model(X_train):
-    latent_dim = 100  # Size of the latent space
+def basic_cnn(x_train, y_train, x_val, y_val, x_test, y_test):
+    print("Training Basic CNN...")
+    x_train_flat = x_train.reshape(x_train.shape[0], -1)
+    x_val_flat = x_val.reshape(x_val.shape[0], -1)
+    x_test_flat = x_test.reshape(x_test.shape[0], -1)
 
-    # Generator Model
-    def build_generator():
-        model = models.Sequential([
-            layers.Dense(256, activation="relu", input_dim=latent_dim),
-            layers.BatchNormalization(),
-            layers.LeakyReLU(alpha=0.2),
-            layers.Dense(512),
-            layers.BatchNormalization(),
-            layers.LeakyReLU(alpha=0.2),
-            layers.Dense(1024),
-            layers.BatchNormalization(),
-            layers.LeakyReLU(alpha=0.2),
-            layers.Dense(28 * 28, activation="tanh"),
-            layers.Reshape((28, 28, 1))
-        ])
-        return model
+    model = Sequential([
+        Dense(128, activation='relu', input_shape=(x_train_flat.shape[1],)),
+        Dense(10, activation='softmax')
+    ])
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    history = model.fit(x_train_flat, y_train, validation_data=(x_val_flat, y_val), epochs=3)
+    test_loss, test_acc = model.evaluate(x_test_flat, y_test)
+    y_test_pred = np.argmax(model.predict(x_test_flat), axis=1)
+    test_f1 = f1_score(y_test, y_test_pred, average='weighted')
+    print(f"Basic CNN Test Accuracy: {test_acc}, Test F1 Score: {test_f1}")
+    plot_training_curves(history)
 
-    # Discriminator Model
-    def build_discriminator():
-        model = models.Sequential([
-            layers.Flatten(input_shape=(28, 28, 1)),
-            layers.Dense(512),
-            layers.LeakyReLU(alpha=0.2),
-            layers.Dropout(0.3),
-            layers.Dense(256),
-            layers.LeakyReLU(alpha=0.2),
-            layers.Dropout(0.3),
-            layers.Dense(1, activation="sigmoid")
-        ])
-        return model
+def developed_cnn(x_train, y_train, x_val, y_val, x_test, y_test):
+    print("Training Slightly Developed CNN...")
 
-    # Compile Models
-    generator = build_generator()
-    discriminator = build_discriminator()
-    discriminator.compile(optimizer=optimizers.Adam(0.0002), loss="binary_crossentropy", metrics=["accuracy"])
+    inputs = Input(shape=x_train.shape[1:])
+    branch_outputs = []
+    for _ in range(3):
+        branch = Conv2D(32, kernel_size=(3, 3), activation='relu')(inputs)
+        branch = MaxPooling2D(pool_size=(2, 2))(branch)
+        branch = Flatten()(branch)
+        branch_outputs.append(branch)
+    
+    concatenated = layers.concatenate(branch_outputs)
+    output = Dense(128, activation='relu')(concatenated)
+    output = Dense(10, activation='softmax')(output)
 
-    # Combined GAN Model
+    model = Model(inputs, output)
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    history = model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=5)
+    test_loss, test_acc = model.evaluate(x_test, y_test)
+    y_test_pred = np.argmax(model.predict(x_test), axis=1)
+    test_f1 = f1_score(y_test, y_test_pred, average='weighted')
+    print(f"Slightly Developed CNN Test Accuracy: {test_acc}, Test F1 Score: {test_f1}")
+    plot_training_curves(history)
+
+def final_cnn(x_train, y_train, x_val, y_val, x_test, y_test):
+    print("Training Final CNN...")
+    datagen = ImageDataGenerator(
+        rotation_range=10,
+        width_shift_range=0.1,
+        height_shift_range=0.1,
+        zoom_range=0.1
+    )
+    datagen.fit(x_train)
+
+    model = Sequential([
+        Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=x_train.shape[1:]),
+        MaxPooling2D(pool_size=(2, 2)),
+        Dropout(0.25),
+        Conv2D(64, kernel_size=(3, 3), activation='relu'),
+        MaxPooling2D(pool_size=(2, 2)),
+        Dropout(0.25),
+        Flatten(),
+        Dense(256, activation='relu'),
+        Dropout(0.5),
+        Dense(10, activation='softmax')
+    ])
+    model.compile(optimizer=Adam(learning_rate=0.001), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    history = model.fit(datagen.flow(x_train, y_train), validation_data=(x_val, y_val), epochs=10)
+    test_loss, test_acc = model.evaluate(x_test, y_test)
+    y_test_pred = np.argmax(model.predict(x_test), axis=1)
+    test_f1 = f1_score(y_test, y_test_pred, average='weighted')
+    print(f"Final CNN Test Accuracy: {test_acc}, Test F1 Score: {test_f1}")
+    plot_training_curves(history)
+
+def dcgan(x_train):
+    print("Training DCGAN...")
+    noise_dim = 100
+    img_shape = x_train.shape[1:]
+
+    generator = Sequential([
+        Dense(256, activation='relu', input_dim=noise_dim),
+        Dense(512, activation='relu'),
+        Dense(np.prod(img_shape), activation='sigmoid'),
+        layers.Reshape(img_shape)
+    ])
+
+    discriminator = Sequential([
+        Flatten(input_shape=img_shape),
+        Dense(512, activation='relu'),
+        Dense(256, activation='relu'),
+        Dense(1, activation='sigmoid')
+    ])
+    discriminator.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
     discriminator.trainable = False
-    gan = models.Sequential([generator, discriminator])
-    gan.compile(optimizer=optimizers.Adam(0.0002), loss="binary_crossentropy")
 
-    # Training Loop
+    gan = Sequential([generator, discriminator])
+    gan.compile(optimizer='adam', loss='binary_crossentropy')
+
     epochs = 10000
-    batch_size = 64
-    half_batch = batch_size // 2
-
+    batch_size = 256
     for epoch in range(epochs):
-        # Select Random Real Images
-        idx = np.random.randint(0, X_train.shape[0], half_batch)
-        real_images = X_train[idx]
+        noise = np.random.normal(0, 1, (batch_size, noise_dim))
+        generated_images = generator.predict(noise)
+        real_images = x_train[np.random.randint(0, x_train.shape[0], batch_size)]
+        labels_real = np.ones((batch_size, 1))
+        labels_fake = np.zeros((batch_size, 1))
+        
+        d_loss_real = discriminator.train_on_batch(real_images, labels_real)
+        d_loss_fake = discriminator.train_on_batch(generated_images, labels_fake)
+        
+        noise = np.random.normal(0, 1, (batch_size, noise_dim))
+        labels_gan = np.ones((batch_size, 1))
+        g_loss = gan.train_on_batch(noise, labels_gan)
 
-        # Generate Fake Images
-        noise = np.random.normal(0, 1, (half_batch, latent_dim))
-        fake_images = generator.predict(noise)
-
-        # Train Discriminator
-        real_labels = np.ones((half_batch, 1))
-        fake_labels = np.zeros((half_batch, 1))
-        d_loss_real = discriminator.train_on_batch(real_images, real_labels)
-        d_loss_fake = discriminator.train_on_batch(fake_images, fake_labels)
-        d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
-
-        # Train Generator
-        noise = np.random.normal(0, 1, (batch_size, latent_dim))
-        valid_labels = np.ones((batch_size, 1))
-        g_loss = gan.train_on_batch(noise, valid_labels)
-
-        # Print Progress
         if epoch % 1000 == 0:
-            print(f"{epoch} [D loss: {d_loss[0]} | D accuracy: {100 * d_loss[1]:.2f}] [G loss: {g_loss}]")
+            print(f"Epoch {epoch}, D Loss: {d_loss_real + d_loss_fake}, G Loss: {g_loss}")
 
-    # Generate and Visualize Synthetic Images
-    noise = np.random.normal(0, 1, (10, latent_dim))
-    generated_images = generator.predict(noise)
-    generated_images = 0.5 * generated_images + 0.5  # Rescale images to [0, 1]
-
-    plt.figure(figsize=(10, 10))
+    # Generate synthetic images and visualize
+    noise = np.random.normal(0, 1, (10, noise_dim))
+    synthetic_images = generator.predict(noise)
+    plt.figure(figsize=(10, 5))
     for i in range(10):
-        plt.subplot(1, 10, i + 1)
-        plt.imshow(generated_images[i].reshape(28, 28), cmap="gray")
-        plt.axis("off")
+        plt.subplot(2, 5, i+1)
+        plt.imshow(synthetic_images[i].reshape(x_train.shape[1:2]), cmap='gray')
+        plt.axis('off')
     plt.show()
 
-    return generator
-
-# Train GAN
-
-
-
-def menu():
+def main_menu():
+    (x_train, y_train), (x_val, y_val), (x_test, y_test) = load_triple_mnist()
     while True:
-        print("\nMenu:")
-        print("1. Train and Evaluate Decision Tree")
-        print("2. Train and Evaluate Basic CNN")
-        print("3. Train and Evaluate Second CNN")
-        print("4. Train and Evaluate Final CNN with Augmentation and Regularization")
-        print("5. Train GAN and Generate Synthetic Images")
+        print("\nMain Menu")
+        print("1. Decision Tree")
+        print("2. Basic CNN")
+        print("3. Slightly Developed CNN")
+        print("4. Final CNN")
+        print("5. DCGAN")
         print("6. Exit")
         choice = input("Enter your choice: ")
 
-        if choice == "1":
-            print("\nRunning Decision Tree...")
-            decision_tree(X_train, y_train, X_valid, y_valid, X_test, y_test)
-        elif choice == "2":
-            print("\nRunning Basic CNN...")
-            basic_cnn(X_train, y_train, X_valid, y_valid, X_test, y_test)
-        elif choice == "3":
-            print("\nRunning Second CNN...")
-            second_cnn(X_train, y_train, X_valid, y_valid, X_test, y_test)
-        elif choice == "4":
-            print("\nRunning Final CNN...")
-            final_cnn(X_train, y_train, X_valid, y_valid, X_test, y_test)
-        elif choice == "5":
-            print("\nTraining GAN and Generating Synthetic Images...")
-            gan_model(X_train)
-        elif choice == "6":
-            print("\nExiting...")
+        if choice == '1':
+            decision_tree_classifier(x_train, y_train, x_val, y_val, x_test, y_test)
+        elif choice == '2':
+            basic_cnn(x_train, y_train, x_val, y_val, x_test, y_test)
+        elif choice == '3':
+            developed_cnn(x_train, y_train, x_val, y_val, x_test, y_test)
+        elif choice == '4':
+            final_cnn(x_train, y_train, x_val, y_val, x_test, y_test)
+        elif choice == '5':
+            dcgan(x_train)
+        elif choice == '6':
+            print("Exiting...")
             break
         else:
-            print("\nInvalid choice. Please try again.")
+            print("Invalid choice. Please try again.")
 
-# Run the menu
-menu()
-
+if __name__ == "__main__":
+    main_menu()
