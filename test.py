@@ -1,482 +1,214 @@
-import os
-import random
-import matplotlib.pyplot as plt
-from PIL import Image
 import numpy as np
-import torch
-import torchvision.transforms as transforms
-from torch.utils.data import DataLoader, Dataset
-import torch.nn as nn
-import torch.optim as optim
-from sklearn.decomposition import PCA
-from sklearn.metrics import classification_report, accuracy_score, f1_score, confusion_matrix
+import tensorflow as tf
+from tensorflow.keras import layers, models
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.model_selection import GridSearchCV
-from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score, f1_score
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Conv2D, Flatten, Dropout, MaxPooling2D, Input
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+import matplotlib.pyplot as plt
 
-# Paths to Dataset
-train_dir = r"C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\train"
-valid_dir = r"C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\val"
-test_dir = r"C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\test"
+def load_triple_mnist():
+    # Replace this with actual loading of the Triple MNIST dataset
+    print("Loading Triple MNIST dataset...")
+    # Placeholder: Load standard MNIST for demonstration purposes
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2, random_state=42)
+    x_train = np.expand_dims(x_train, axis=-1) / 255.0
+    x_val = np.expand_dims(x_val, axis=-1) / 255.0
+    x_test = np.expand_dims(x_test, axis=-1) / 255.0
+    return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
-# Task 1: Visualize Dataset
-def visualize_images(data_dir, n_samples=5):
-    image_paths = []
-    for root, _, files in os.walk(data_dir):
-        for file in files:
-            if file.endswith(('.png', '.jpg', '.jpeg', '.bmp')):
-                image_paths.append(os.path.join(root, file))
-    samples = random.sample(image_paths, n_samples)
-    fig, axs = plt.subplots(1, n_samples, figsize=(15, 5))
-    for i, img_path in enumerate(samples):
-        img = Image.open(img_path).convert('L')
-        label = os.path.basename(os.path.dirname(img_path))
-        axs[i].imshow(img, cmap='gray')
-        axs[i].set_title(f"Label: {label}")
-        axs[i].axis('off')
+def plot_training_curves(history):
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['loss'], label='Training Loss')
+    plt.plot(history.history['val_loss'], label='Validation Loss')
+    plt.legend()
+    plt.title('Loss Curves')
+
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['accuracy'], label='Training Accuracy')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+    plt.legend()
+    plt.title('Accuracy Curves')
     plt.show()
-def train_enhanced_cnn():
-    transform = transforms.Compose([
-        transforms.Resize((84, 84)),
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
+
+def decision_tree_classifier(x_train, y_train, x_val, y_val, x_test, y_test):
+    print("Training Decision Tree...")
+    x_train_flat = x_train.reshape(x_train.shape[0], -1)
+    x_val_flat = x_val.reshape(x_val.shape[0], -1)
+    x_test_flat = x_test.reshape(x_test.shape[0], -1)
+    clf = DecisionTreeClassifier()
+    clf.fit(x_train_flat, y_train)
+    y_val_pred = clf.predict(x_val_flat)
+    y_test_pred = clf.predict(x_test_flat)
+    val_f1 = f1_score(y_val, y_val_pred, average='weighted')
+    test_f1 = f1_score(y_test, y_test_pred, average='weighted')
+    print(f"Decision Tree Validation F1 Score: {val_f1}, Test F1 Score: {test_f1}")
+
+def basic_cnn(x_train, y_train, x_val, y_val, x_test, y_test):
+    print("Training Basic CNN...")
+    x_train_flat = x_train.reshape(x_train.shape[0], -1)
+    x_val_flat = x_val.reshape(x_val.shape[0], -1)
+    x_test_flat = x_test.reshape(x_test.shape[0], -1)
+
+    model = Sequential([
+        Dense(128, activation='relu', input_shape=(x_train_flat.shape[1],)),
+        Dense(10, activation='softmax')
     ])
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    history = model.fit(x_train_flat, y_train, validation_data=(x_val_flat, y_val), epochs=3)
+    test_loss, test_acc = model.evaluate(x_test_flat, y_test)
+    y_test_pred = np.argmax(model.predict(x_test_flat), axis=1)
+    test_f1 = f1_score(y_test, y_test_pred, average='weighted')
+    print(f"Basic CNN Test Accuracy: {test_acc}, Test F1 Score: {test_f1}")
+    plot_training_curves(history)
 
-    class SubdirDataset(Dataset):
-        def __init__(self, data_dir, transform=None):
-            self.data = []
-            self.labels = []
-            self.transform = transform
-            self.label_map = {}
-            for idx, subdir in enumerate(sorted(os.listdir(data_dir))):
-                self.label_map[subdir] = idx
-                for file in os.listdir(os.path.join(data_dir, subdir)):
-                    if file.endswith('.png'):
-                        self.data.append(os.path.join(data_dir, subdir, file))
-                        self.labels.append(idx)
+def developed_cnn(x_train, y_train, x_val, y_val, x_test, y_test):
+    print("Training Slightly Developed CNN...")
 
-        def __len__(self):
-            return len(self.data)
-
-        def __getitem__(self, idx):
-            img_path = self.data[idx]
-            label = self.labels[idx]
-            img = Image.open(img_path).convert('L')
-            if self.transform:
-                img = self.transform(img)
-            return img, label
-
-    train_dataset = SubdirDataset(train_dir, transform)
-    val_dataset = SubdirDataset(valid_dir, transform)
-    test_dataset = SubdirDataset(test_dir, transform)
-
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = EnhancedCNNModel(num_classes=len(train_dataset.label_map)).to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.0001)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
-
-    early_stopping = EarlyStopping(patience=5, verbose=True)
-
-    for epoch in range(20):
-        model.train()
-        train_loss = 0
-        for images, labels in train_loader:
-            images, labels = images.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
-        scheduler.step()
-
-        # Validation phase
-        model.eval()
-        val_loss = 0
-        correct = 0
-        total = 0
-        with torch.no_grad():
-            for images, labels in val_loader:
-                images, labels = images.to(device), labels.to(device)
-                outputs = model(images)
-                loss = criterion(outputs, labels)
-                val_loss += loss.item()
-                _, preds = torch.max(outputs, 1)
-                correct += (preds == labels).sum().item()
-                total += labels.size(0)
-        val_accuracy = correct / total
-        print(f"Epoch {epoch + 1}, Training Loss: {train_loss / len(train_loader):.4f}, "
-              f"Validation Loss: {val_loss / len(val_loader):.4f}, Accuracy: {val_accuracy:.4f}")
-
-        # Early stopping check
-        early_stopping(val_loss / len(val_loader), model)
-        if early_stopping.early_stop:
-            print("Early stopping triggered. Training stopped.")
-            break
-
-    # Restore the best model weights
-    early_stopping.restore_best_weights(model)
-
-    # Test phase
-    model.eval()
-    all_preds = []
-    all_labels = []
-    with torch.no_grad():
-        for images, labels in test_loader:
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            _, preds = torch.max(outputs, 1)
-            all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
-
-    accuracy = accuracy_score(all_labels, all_preds)
-    f1 = f1_score(all_labels, all_preds, average='weighted')
-    cm = confusion_matrix(all_labels, all_preds)
-
-    print(f"CNN Performance:\nAccuracy: {accuracy:.4f}\nF1-score: {f1:.4f}\nConfusion Matrix:\n{cm}")
-
+    inputs = Input(shape=x_train.shape[1:])
+    branch_outputs = []
+    for _ in range(3):
+        branch = Conv2D(32, kernel_size=(3, 3), activation='relu')(inputs)
+        branch = MaxPooling2D(pool_size=(2, 2))(branch)
+        branch = Flatten()(branch)
+        branch_outputs.append(branch)
     
-# Task 2: Preprocessing
-def preprocess_flattened_data(data_dir):
-    X, y = [], []
-    label_encoder = LabelEncoder()
-    for root, _, files in os.walk(data_dir):
-        for file in files:
-            if file.endswith('.png'):
-                img_path = os.path.join(root, file)
-                img = Image.open(img_path).convert('L')
-                X.append(np.array(img).flatten())
-                y.append(os.path.basename(root))
-    y = label_encoder.fit_transform(y)
-    return np.array(X, dtype=np.float32), np.array(y), label_encoder
+    concatenated = layers.concatenate(branch_outputs)
+    output = Dense(128, activation='relu')(concatenated)
+    output = Dense(10, activation='softmax')(output)
 
-# Task 2: Train Decision Tree with PCA
-def train_decision_tree_with_pca():
-    X_train, y_train, label_encoder = preprocess_flattened_data(train_dir)
-    X_val, y_val, _ = preprocess_flattened_data(valid_dir)
-    X_test, y_test, _ = preprocess_flattened_data(test_dir)
+    model = Model(inputs, output)
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    history = model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=5)
+    test_loss, test_acc = model.evaluate(x_test, y_test)
+    y_test_pred = np.argmax(model.predict(x_test), axis=1)
+    test_f1 = f1_score(y_test, y_test_pred, average='weighted')
+    print(f"Slightly Developed CNN Test Accuracy: {test_acc}, Test F1 Score: {test_f1}")
+    plot_training_curves(history)
 
-    # Normalize data
-    X_train /= 255.0
-    X_val /= 255.0
-    X_test /= 255.0
-
-    # PCA
-    pca = PCA(n_components=500)
-    X_train_pca = pca.fit_transform(X_train)
-    X_val_pca = pca.transform(X_val)
-    X_test_pca = pca.transform(X_test)
-
-    # Decision Tree with Hyperparameter Tuning
-    param_grid = {
-        'max_depth': [10, 20, 50, None],
-        'min_samples_split': [2, 5, 10, 20]
-    }
-    grid_search = GridSearchCV(
-        DecisionTreeClassifier(class_weight='balanced'),
-        param_grid,
-        cv=3,
-        scoring='accuracy'
+def final_cnn(x_train, y_train, x_val, y_val, x_test, y_test):
+    print("Training Final CNN...")
+    datagen = ImageDataGenerator(
+        rotation_range=10,
+        width_shift_range=0.1,
+        height_shift_range=0.1,
+        zoom_range=0.1
     )
-    grid_search.fit(X_train_pca, y_train)
-    best_tree = grid_search.best_estimator_()
+    datagen.fit(x_train)
 
-    # Evaluate
-    y_pred = best_tree.predict(X_test_pca)
-    accuracy = accuracy_score(y_test, y_pred)
-    f1 = f1_score(y_test, y_pred, average='weighted', zero_division=0)
-    cm = confusion_matrix(y_test, y_pred)
-    report = classification_report(y_test, y_pred, zero_division=0)
+    model = Sequential([
+        Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=x_train.shape[1:]),
+        MaxPooling2D(pool_size=(2, 2)),
+        Dropout(0.25),
+        Conv2D(64, kernel_size=(3, 3), activation='relu'),
+        MaxPooling2D(pool_size=(2, 2)),
+        Dropout(0.25),
+        Flatten(),
+        Dense(256, activation='relu'),
+        Dropout(0.5),
+        Dense(10, activation='softmax')
+    ])
+    model.compile(optimizer=Adam(learning_rate=0.001), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    history = model.fit(datagen.flow(x_train, y_train), validation_data=(x_val, y_val), epochs=10)
+    test_loss, test_acc = model.evaluate(x_test, y_test)
+    y_test_pred = np.argmax(model.predict(x_test), axis=1)
+    test_f1 = f1_score(y_test, y_test_pred, average='weighted')
+    print(f"Final CNN Test Accuracy: {test_acc}, Test F1 Score: {test_f1}")
+    plot_training_curves(history)
 
-    print(f"Best Parameters: {grid_search.best_params_}")
-    print(f"Decision Tree with PCA\nAccuracy: {accuracy:.4f}\nF1-score: {f1:.4f}\nConfusion Matrix:\n{cm}")
-    print(f"Classification Report:\n{report}")
+def dcgan(x_train):
+    print("Training DCGAN...")
+    noise_dim = 100
+    img_shape = x_train.shape[1:]
 
-# Early Stopping Implementation
-class EarlyStopping:
-    def __init__(self, patience=5, verbose=False):
-        self.patience = patience
-        self.verbose = verbose
-        self.best_loss = None
-        self.best_weights = None
-        self.counter = 0
-        self.early_stop = False
-
-    def __call__(self, val_loss, model):
-        if self.best_loss is None:
-            self.best_loss = val_loss
-            self.best_weights = model.state_dict()
-        elif val_loss < self.best_loss:
-            self.best_loss = val_loss
-            self.best_weights = model.state_dict()
-            self.counter = 0
-        else:
-            self.counter += 1
-            if self.counter >= self.patience:
-                self.early_stop = True
-                if self.verbose:
-                    print("Early stopping triggered.")
-            else:
-                if self.verbose:
-                    print(f"Validation loss did not improve. Counter: {self.counter}/{self.patience}")
-
-    def restore_best_weights(self, model):
-        if self.best_weights is not None:
-            model.load_state_dict(self.best_weights)
-
-# Task 2: Train Enhanced CNN
-class EnhancedCNNModel(nn.Module):
-    def __init__(self, num_classes):
-        super(EnhancedCNNModel, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.fc1 = nn.Linear(128 * 10 * 10, 256)
-        self.fc2 = nn.Linear(256, num_classes)
-
-    def forward(self, x):
-        x = self.pool(torch.relu(self.conv1(x)))
-        x = self.pool(torch.relu(self.conv2(x)))
-        x = self.pool(torch.relu(self.conv3(x)))
-        x = x.view(-1, 128 * 10 * 10)
-        x = torch.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
-
-# Task 3: Train Improved Slightly CNN
-class SplitImageDataset(Dataset):
-    def __init__(self, data_dir, transform=None):
-        self.data = []
-        self.labels = []
-        self.transform = transform
-        self.label_map = {}
-        for idx, subdir in enumerate(sorted(os.listdir(data_dir))):
-            self.label_map[subdir] = idx
-            for file in os.listdir(os.path.join(data_dir, subdir)):
-                if file.endswith('.png'):
-                    img_path = os.path.join(data_dir, subdir, file)
-                    self.data.append(img_path)
-                    self.labels.append(idx)
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        img_path = self.data[idx]
-        label = self.labels[idx]
-        img = Image.open(img_path).convert('L')
-        img_width, img_height = img.size
-        left = 0
-        top = 0
-        right = img_width // 3
-        bottom = img_height
-        img_piece1 = img.crop((left, top, right, bottom))
-        
-        left = img_width // 3
-        right = 2 * img_width // 3
-        img_piece2 = img.crop((left, top, right, bottom))
-
-        left = 2 * img_width // 3
-        right = img_width
-        img_piece3 = img.crop((left, top, right, bottom))
-
-        if self.transform:
-            img_piece1 = self.transform(img_piece1)
-            img_piece2 = self.transform(img_piece2)
-            img_piece3 = self.transform(img_piece3)
-
-        return img_piece1, img_piece2, img_piece3, label
-
-def train_improved_cnn():
-    transform = transforms.Compose([
-        transforms.Resize((84, 84)),
-        transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
+    generator = Sequential([
+        Dense(256, activation='relu', input_dim=noise_dim),
+        Dense(512, activation='relu'),
+        Dense(np.prod(img_shape), activation='sigmoid'),
+        layers.Reshape(img_shape)
     ])
 
-    train_dataset = SplitImageDataset(train_dir, transform)
-    val_dataset = SplitImageDataset(valid_dir, transform)
-    test_dataset = SplitImageDataset(test_dir, transform)
+    discriminator = Sequential([
+        Flatten(input_shape=img_shape),
+        Dense(512, activation='relu'),
+        Dense(256, activation='relu'),
+        Dense(1, activation='sigmoid')
+    ])
+    discriminator.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    discriminator.trainable = False
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = EnhancedCNNModel(num_classes=len(train_dataset.label_map)).to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.0001)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+    gan = Sequential([generator, discriminator])
+    gan.compile(optimizer='adam', loss='binary_crossentropy')
 
-    early_stopping = EarlyStopping(patience=5, verbose=True)
+    epochs = 10000
+    batch_size = 256
+    for epoch in range(epochs):
+        noise = np.random.normal(0, 1, (batch_size, noise_dim))
+        generated_images = generator.predict(noise)
+        real_images = x_train[np.random.randint(0, x_train.shape[0], batch_size)]
+        labels_real = np.ones((batch_size, 1))
+        labels_fake = np.zeros((batch_size, 1))
+        
+        d_loss_real = discriminator.train_on_batch(real_images, labels_real)
+        d_loss_fake = discriminator.train_on_batch(generated_images, labels_fake)
+        
+        noise = np.random.normal(0, 1, (batch_size, noise_dim))
+        labels_gan = np.ones((batch_size, 1))
+        g_loss = gan.train_on_batch(noise, labels_gan)
 
-    for epoch in range(20):
-        model.train()
-        train_loss = 0
-        for img1, img2, img3, labels in train_loader:
-            img1, img2, img3, labels = img1.to(device), img2.to(device), img3.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs1 = model(img1)
-            outputs2 = model(img2)
-            outputs3 = model(img3)
-            final_outputs = torch.cat((outputs1, outputs2, outputs3), dim=1)
-            loss = criterion(final_outputs, labels)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
+        if epoch % 1000 == 0:
+            print(f"Epoch {epoch}, D Loss: {d_loss_real + d_loss_fake}, G Loss: {g_loss}")
 
-        scheduler.step()
+    # Generate synthetic images and visualize
+    noise = np.random.normal(0, 1, (10, noise_dim))
+    synthetic_images = generator.predict(noise)
+    plt.figure(figsize=(10, 5))
+    for i in range(10):
+        plt.subplot(2, 5, i+1)
+        plt.imshow(synthetic_images[i].reshape(x_train.shape[1:2]), cmap='gray')
+        plt.axis('off')
+    plt.show()
+##
+##def main_menu():
+##    (x_train, y_train), (x_val, y_val), (x_test, y_test) = load_triple_mnist()
+##    while True:
+##        print("\nMain Menu")
+##        print("1. Decision Tree")
+##        print("2. Basic CNN")
+##        print("3. Slightly Developed CNN")
+##        print("4. Final CNN")
+##        print("5. DCGAN")
+##        print("6. Exit")
+##        choice = input("Enter your choice: ")
+##
+##        if choice == '1':
+##            decision_tree_classifier(x_train, y_train, x_val, y_val, x_test, y_test)
+##        elif choice == '2':
+##            basic_cnn(x_train, y_train, x_val, y_val, x_test, y_test)
+##        elif choice == '3':
+##            developed_cnn(x_train, y_train, x_val, y_val, x_test, y_test)
+##        elif choice == '4':
+##            final_cnn(x_train, y_train, x_val, y_val, x_test, y_test)
+##        elif choice == '5':
+##            dcgan(x_train)
+##        elif choice == '6':
+##            print("Exiting...")
+##            break
+##        else:
+##            print("Invalid choice. Please try again.")
+##
+##if __name__ == "__main__":
+##    main_menu()
 
-        # Validation phase
-        model.eval()
-        val_loss = 0
-        correct = 0
-        total = 0
-        with torch.no_grad():
-            for img1, img2, img3, labels in val_loader:
-                img1, img2, img3, labels = img1.to(device), img2.to(device), img3.to(device), labels.to(device)
-                outputs1 = model(img1)
-                outputs2 = model(img2)
-                outputs3 = model(img3)
-                final_outputs = torch.cat((outputs1, outputs2, outputs3), dim=1)
-                loss = criterion(final_outputs, labels)
-                val_loss += loss.item()
-                _, preds = torch.max(final_outputs, 1)
-                correct += (preds == labels).sum().item()
-                total += labels.size(0)
-
-        val_accuracy = correct / total
-        print(f"Epoch {epoch + 1}, Training Loss: {train_loss / len(train_loader):.4f}, "
-              f"Validation Loss: {val_loss / len(val_loader):.4f}, Accuracy: {val_accuracy:.4f}")
-
-        # Early stopping check
-        early_stopping(val_loss / len(val_loader), model)
-        if early_stopping.early_stop:
-            print("Early stopping triggered. Training stopped.")
-            break
-
-    # Restore the best model weights
-    early_stopping.restore_best_weights(model)
-
-    # Test phase
-    model.eval()
-    all_preds = []
-    all_labels = []
-    with torch.no_grad():
-        for img1, img2, img3, labels in test_loader:
-            img1, img2, img3, labels = img1.to(device), img2.to(device), img3.to(device), labels.to(device)
-            outputs1 = model(img1)
-            outputs2 = model(img2)
-            outputs3 = model(img3)
-            final_outputs = torch.cat((outputs1, outputs2, outputs3), dim=1)
-            _, preds = torch.max(final_outputs, 1)
-            all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
-
-    accuracy = accuracy_score(all_labels, all_preds)
-    f1 = f1_score(all_labels, all_preds, average='weighted')
-    cm = confusion_matrix(all_labels, all_preds)
-
-    print(f"CNN Performance:\nAccuracy: {accuracy:.4f}\nF1-score: {f1:.4f}\nConfusion Matrix:\n{cm}")
-
-# Task 4: Train Improved Slightly Decision Tree
-def train_improved_decision_tree():
-    X_train, y_train, label_encoder = preprocess_flattened_data(train_dir)
-    X_val, y_val, _ = preprocess_flattened_data(valid_dir)
-    X_test, y_test, _ = preprocess_flattened_data(test_dir)
-
-    # Normalize data
-    X_train /= 255.0
-    X_val /= 255.0
-    X_test /= 255.0
-
-    # PCA
-    pca = PCA(n_components=500)
-    X_train_pca = pca.fit_transform(X_train)
-    X_val_pca = pca.transform(X_val)
-    X_test_pca = pca.transform(X_test)
-
-    # Train separate trees for each part of the image
-    param_grid = {
-        'max_depth': [10, 20, 50, None],
-        'min_samples_split': [2, 5, 10, 20]
-    }
-
-    grid_search = GridSearchCV(
-        DecisionTreeClassifier(class_weight='balanced'),
-        param_grid,
-        cv=3,
-        scoring='accuracy'
-    )
-
-    # Train on the three pieces of the image
-    # Split into 3 parts
-    X_train_part1, X_train_part2, X_train_part3 = np.split(X_train_pca, 3, axis=1)
-    X_val_part1, X_val_part2, X_val_part3 = np.split(X_val_pca, 3, axis=1)
-    X_test_part1, X_test_part2, X_test_part3 = np.split(X_test_pca, 3, axis=1)
-
-    # Train grid search on all parts
-    grid_search.fit(X_train_part1, y_train)
-    best_tree_part1 = grid_search.best_estimator_()
-    grid_search.fit(X_train_part2, y_train)
-    best_tree_part2 = grid_search.best_estimator_()
-    grid_search.fit(X_train_part3, y_train)
-    best_tree_part3 = grid_search.best_estimator_()
-
-    # Evaluate
-    y_pred_part1 = best_tree_part1.predict(X_test_part1)
-    y_pred_part2 = best_tree_part2.predict(X_test_part2)
-    y_pred_part3 = best_tree_part3.predict(X_test_part3)
-
-    # Combine predictions
-    final_pred = np.concatenate((y_pred_part1[:, None], y_pred_part2[:, None], y_pred_part3[:, None]), axis=1)
-
-    # Evaluate the final prediction
-    accuracy = accuracy_score(y_test, final_pred)
-    f1 = f1_score(y_test, final_pred, average='weighted')
-    cm = confusion_matrix(y_test, final_pred)
-
-    print(f"Decision Tree with PCA\nAccuracy: {accuracy:.4f}\nF1-score: {f1:.4f}\nConfusion Matrix:\n{cm}")
-def check_device():
-    if torch.cuda.is_available():
-        print("CUDA is available. Using GPU.")
-        return torch.device("cuda")
-    else:
-        print("CUDA is not available. Using CPU.")
-        return torch.device("cpu")
-# Menu System
-def main_menu():
-    check_device()
-    while True:
-        print("\n--- Machine Learning Assignment Menu ---")
-        print("1. Visualize Dataset (Task 1)")
-        print("2. Train Decision Tree with PCA (Task 2)")
-        print("3. Train Basic CNN (Task 2)")
-        print("4. Train Improved Slightly CNN (Task 3)")
-        print("5. Train Improved Slightly Decision Tree (Task 4)")
-        print("6. Exit")
-        choice = input("Enter your choice: ")
-        if choice == "1":
-            visualize_images(train_dir)
-        elif choice == "2":
-            train_decision_tree_with_pca()
-        elif choice == "3":
-            train_enhanced_cnn()
-        elif choice == "4":
-            train_improved_cnn()
-        elif choice == "5":
-            train_improved_decision_tree()
-        elif choice == "6":
-            print("Exiting...")
-            break
-        else:
-            print("Invalid choice. Please try again.")
-
-if __name__ == "__main__":
-    main_menu()
+decision_tree_classifier(x_train, y_train, x_val, y_val, x_test, y_test)
+basic_cnn(x_train, y_train, x_val, y_val, x_test, y_test)
+developed_cnn(x_train, y_train, x_val, y_val, x_test, y_test)
+final_cnn(x_train, y_train, x_val, y_val, x_test, y_test)
+dcgan(x_train)
