@@ -6,23 +6,31 @@ from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Dense, Conv2D, Flatten, Dropout, MaxPooling2D, Input, Reshape,Conv2DTranspose,Conv2D,Input
+from tensorflow.keras.layers import Dense, Conv2D, Flatten, Dropout, MaxPooling2D, Input, Reshape, Conv2DTranspose
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import matplotlib.pyplot as plt
 
+# Set dataset paths
+train_dir = r"C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\train"
+valid_dir = r"C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\val"
+test_dir = r"C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\test"
 
+# Load Triple MNIST dataset using ImageDataGenerator
 def load_triple_mnist():
-    # Replace this with actual loading of the Triple MNIST dataset
     print("Loading Triple MNIST dataset...")
-    # Placeholder: Load standard MNIST for demonstration purposes
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2, random_state=42)
-    x_train = np.expand_dims(x_train, axis=-1) / 255.0
-    x_val = np.expand_dims(x_val, axis=-1) / 255.0
-    x_test = np.expand_dims(x_test, axis=-1) / 255.0
-    return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
+    # Initialize ImageDataGenerator for preprocessing
+    datagen = ImageDataGenerator(rescale=1./255)
+
+    # Load train, validation, and test sets
+    train_gen = datagen.flow_from_directory(train_dir, target_size=(28, 28), color_mode='grayscale', batch_size=32, class_mode='sparse')
+    valid_gen = datagen.flow_from_directory(valid_dir, target_size=(28, 28), color_mode='grayscale', batch_size=32, class_mode='sparse')
+    test_gen = datagen.flow_from_directory(test_dir, target_size=(28, 28), color_mode='grayscale', batch_size=32, class_mode='sparse')
+
+    return train_gen, valid_gen, test_gen
+
+# Plot training curves
 def plot_training_curves(history):
     plt.figure(figsize=(12, 4))
     plt.subplot(1, 2, 1)
@@ -30,7 +38,6 @@ def plot_training_curves(history):
     plt.plot(history.history['val_loss'], label='Validation Loss')
     plt.legend()
     plt.title('Loss Curves')
-
     plt.subplot(1, 2, 2)
     plt.plot(history.history['accuracy'], label='Training Accuracy')
     plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
@@ -38,6 +45,7 @@ def plot_training_curves(history):
     plt.title('Accuracy Curves')
     plt.show()
 
+# Train Decision Tree Classifier
 def decision_tree_classifier(x_train, y_train, x_val, y_val, x_test, y_test):
     print("Training Decision Tree...")
     x_train_flat = x_train.reshape(x_train.shape[0], -1)
@@ -51,13 +59,14 @@ def decision_tree_classifier(x_train, y_train, x_val, y_val, x_test, y_test):
     test_f1 = f1_score(y_test, y_test_pred, average='weighted')
     print(f"Decision Tree Validation F1 Score: {val_f1}, Test F1 Score: {test_f1}")
 
+# Train Basic CNN
 def basic_cnn(x_train, y_train, x_val, y_val, x_test, y_test):
     print("Training Basic CNN...")
     x_train_flat = x_train.reshape(x_train.shape[0], -1)
     x_val_flat = x_val.reshape(x_val.shape[0], -1)
     x_test_flat = x_test.reshape(x_test.shape[0], -1)
 
-    model = Sequential([
+    model = Sequential([ 
         Dense(128, activation='relu', input_shape=(x_train_flat.shape[1],)),
         Dense(10, activation='softmax')
     ])
@@ -69,9 +78,9 @@ def basic_cnn(x_train, y_train, x_val, y_val, x_test, y_test):
     print(f"Basic CNN Test Accuracy: {test_acc}, Test F1 Score: {test_f1}")
     plot_training_curves(history)
 
+# Train Slightly Developed CNN
 def developed_cnn(x_train, y_train, x_val, y_val, x_test, y_test):
     print("Training Slightly Developed CNN...")
-
     inputs = Input(shape=x_train.shape[1:])
     branch_outputs = []
     for _ in range(3):
@@ -93,6 +102,7 @@ def developed_cnn(x_train, y_train, x_val, y_val, x_test, y_test):
     print(f"Slightly Developed CNN Test Accuracy: {test_acc}, Test F1 Score: {test_f1}")
     plot_training_curves(history)
 
+# Train Final CNN
 def final_cnn(x_train, y_train, x_val, y_val, x_test, y_test):
     print("Training Final CNN...")
     datagen = ImageDataGenerator(
@@ -123,174 +133,110 @@ def final_cnn(x_train, y_train, x_val, y_val, x_test, y_test):
     print(f"Final CNN Test Accuracy: {test_acc}, Test F1 Score: {test_f1}")
     plot_training_curves(history)
 
-def build_gan_and_train(x_train, epochs=50, batch_size=64):
-    img_shape = x_train.shape[1:]
-    latent_dim = 100
-
-    # Generator
-    def build_generator():
-        model = tf.keras.Sequential([
-            tf.keras.layers.Input(shape=(latent_dim,)),
-            tf.keras.layers.Dense(256, activation='relu'),
-            tf.keras.layers.BatchNormalization(momentum=0.8),
-            tf.keras.layers.Dense(512, activation='relu'),
-            tf.keras.layers.BatchNormalization(momentum=0.8),
-            tf.keras.layers.Dense(1024, activation='relu'),
-            tf.keras.layers.BatchNormalization(momentum=0.8),
-            tf.keras.layers.Dense(np.prod(img_shape), activation='tanh'),
-            tf.keras.layers.Reshape(img_shape)
-        ])
+# Build and Train GAN
+def build_and_train_gan(latent_dim, input_shape, x_train, epochs=10000, batch_size=64):
+    def build_generator(latent_dim):
+        model = models.Sequential()
+        model.add(layers.Dense(7 * 7 * 256, input_dim=latent_dim))
+        model.add(layers.Reshape((7, 7, 256)))
+        model.add(layers.BatchNormalization())
+        model.add(layers.ReLU())
+        model.add(layers.Conv2DTranspose(128, kernel_size=3, strides=2, padding='same'))
+        model.add(layers.BatchNormalization())
+        model.add(layers.ReLU())
+        model.add(layers.Conv2DTranspose(64, kernel_size=3, strides=2, padding='same'))
+        model.add(layers.BatchNormalization())
+        model.add(layers.ReLU())
+        model.add(layers.Conv2DTranspose(1, kernel_size=3, strides=2, padding='same', activation='tanh'))
         return model
 
-    # Discriminator
-    def build_discriminator():
-        model = tf.keras.Sequential([
-            tf.keras.layers.Input(shape=img_shape),
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(512, activation='relu'),
-            tf.keras.layers.Dense(256, activation='relu'),
-            tf.keras.layers.Dense(1, activation='sigmoid')
-        ])
+    def build_discriminator(input_shape):
+        model = models.Sequential()
+        model.add(layers.Conv2D(64, kernel_size=3, strides=2, padding='same', input_shape=input_shape))
+        model.add(layers.LeakyReLU(alpha=0.2))
+        model.add(layers.Dropout(0.3))
+        model.add(layers.Conv2D(128, kernel_size=3, strides=2, padding='same'))
+        model.add(layers.LeakyReLU(alpha=0.2))
+        model.add(layers.Dropout(0.3))
+        model.add(layers.Conv2D(256, kernel_size=3, strides=2, padding='same'))
+        model.add(layers.LeakyReLU(alpha=0.2))
+        model.add(layers.Dropout(0.3))
+        model.add(layers.Flatten())
+        model.add(layers.Dense(1, activation='sigmoid'))
         return model
 
-    # Instantiate Generator and Discriminator
-    generator = build_generator()
-    discriminator = build_discriminator()
+    def plot_generated_images(epoch, generator, latent_dim, examples=10, dim=(1, 10), figsize=(10, 1)):
+        noise = np.random.randn(examples, latent_dim)
+        generated_images = generator.predict(noise)
+        plt.figure(figsize=figsize)
+        for i in range(examples):
+            plt.subplot(dim[0], dim[1], i+1)
+            plt.imshow(generated_images[i, :, :, 0], interpolation='nearest', cmap='gray')
+            plt.axis('off')
+        plt.tight_layout()
+        plt.savefig(f"generated_images_epoch_{epoch}.png")
+        plt.close()
 
-    # Compile the Discriminator
-    discriminator.compile(
-        optimizer=Adam(learning_rate=0.0002, beta_1=0.5),
-        loss='binary_crossentropy',
-        metrics=['accuracy']
-    )
+    def augment_data(original_data, synthetic_data):
+        return np.concatenate((original_data, synthetic_data), axis=0)
 
-    # Build and Compile the GAN
+    # Build models
+    discriminator = build_discriminator(input_shape)
+    generator = build_generator(latent_dim)
+
+    # Compile models
+    discriminator.compile(optimizer=Adam(learning_rate=0.0002, beta_1=0.5), loss='binary_crossentropy', metrics=['accuracy'])
     discriminator.trainable = False
-    gan_input = Input(shape=(latent_dim,))
-    generated_image = generator(gan_input)
-    gan_output = discriminator(generated_image)
-    gan_model = Model(gan_input, gan_output)
-    gan_model.compile(
-        optimizer=Adam(learning_rate=0.0002, beta_1=0.5),
-        loss='binary_crossentropy'
-    )
 
-    def train_gan():
-        epochs=25
-        try:
-            for epoch in range(epochs):
-                print(f"\nEpoch {epoch + 1}/{epochs}")
+    # Build GAN model
+    z = layers.Input(shape=(latent_dim,))
+    img = generator(z)
+    valid = discriminator(img)
+    gan = Model(z, valid)
+    gan.compile(optimizer=Adam(learning_rate=0.0002, beta_1=0.5), loss='binary_crossentropy')
 
-                # Get a random batch of real images
-                idx = np.random.randint(0, x_train.shape[0], batch_size)
-                real_images = x_train[idx]
-                real_labels = np.ones((batch_size, 1))
+    # Train the GAN
+    half_batch = batch_size // 2
+    for epoch in range(epochs):
+        # Train Discriminator
+        idx = np.random.randint(0, x_train.shape[0], half_batch)
+        real_images = x_train[idx]
+        fake_images = generator.predict(np.random.randn(half_batch, latent_dim))
+        d_loss_real = discriminator.train_on_batch(real_images, np.ones((half_batch, 1)))
+        d_loss_fake = discriminator.train_on_batch(fake_images, np.zeros((half_batch, 1)))
+        d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
 
-                # Generate fake images
-                noise = np.random.normal(0, 1, (batch_size, latent_dim))
-                fake_images = generator.predict(noise)
-                fake_labels = np.zeros((batch_size, 1))
+        # Train Generator
+        g_loss = gan.train_on_batch(np.random.randn(batch_size, latent_dim), np.ones((batch_size, 1)))
 
-                # Log shapes of the images and labels
-                print(f"Real images shape: {real_images.shape}, Real labels shape: {real_labels.shape}")
-                print(f"Fake images shape: {fake_images.shape}, Fake labels shape: {fake_labels.shape}")
+        # If at save interval, save generated image samples
+        if epoch % 1000 == 0:
+            print(f"{epoch} [D loss: {d_loss[0]} | D accuracy: {100 * d_loss[1]}] [G loss: {g_loss}]")
+            plot_generated_images(epoch, generator, latent_dim)
 
-                # Train the discriminator
-                try:
-                    d_loss_real = discriminator.train_on_batch(real_images, real_labels)
-                    d_loss_fake = discriminator.train_on_batch(fake_images, fake_labels)
-                    print(f"D Real Loss: {d_loss_real}, D Fake Loss: {d_loss_fake}")
-                except Exception as e:
-                    print(f"Error during Discriminator training: {e}")
-                    break
-
-                # Train the generator
-                noise = np.random.normal(0, 1, (batch_size, latent_dim))
-                valid_labels = np.ones((batch_size, 1))  # Labels for fake images should be 1 when training generator
-                try:
-                    g_loss = gan.train_on_batch(noise, valid_labels)
-                    print(f"G Loss: {g_loss}")
-                except Exception as e:
-                    print(f"Error during Generator training: {e}")
-                    break
-
-                # Optional: Save or visualize generated images
-                if epoch % save_interval == 0 or epoch == epochs - 1:
-                    generate_and_save_images(generator, epoch)
-
-        except Exception as e:
-            print(f"Error in GAN training loop: {e}")
-
-
-
-
-    train_gan()
     return generator
 
-def generate_and_visualize_images(generator, num_images=10, latent_dim=100):
-    noise = np.random.normal(0, 1, (num_images, latent_dim))
-    generated_images = generator.predict(noise)
-    generated_images = (generated_images * 127.5 + 127.5).astype('uint8')  # Scale back to [0, 255]
-
-    # Visualize synthetic images
-    plt.figure(figsize=(10, 2))
-    for i in range(num_images):
-        plt.subplot(1, num_images, i + 1)
-        plt.imshow(generated_images[i].squeeze(), cmap='gray')
-        plt.axis('off')
-    plt.show()
-    return generated_images
-
-def augment_and_retrain(generator, x_train, y_train, x_val, y_val, x_test, y_test, num_augmented=5000, latent_dim=100):
-    # Generate synthetic images
-    synthetic_images = generate_and_visualize_images(generator, num_augmented, latent_dim)
-
-    # Create synthetic labels (random labels for augmentation, can be refined if needed)
-    synthetic_labels = np.random.choice(y_train, num_augmented)
-
-    # Combine datasets
-    x_train_augmented = np.concatenate([x_train, synthetic_images], axis=0)
-    y_train_augmented = np.concatenate([y_train, synthetic_labels], axis=0)
-
-    # Retrain the Final CNN
-    print("Retraining Final CNN with augmented data...")
-    final_cnn(x_train_augmented, y_train_augmented, x_val, y_val, x_test, y_test)
-
-def dcgan(x_train, y_train, x_test, y_test):
-    print("Training DCGAN...")
-    generator = build_gan_and_train(x_train, epochs=25, batch_size=32)
-    print("Generating synthetic images...")
-    generate_and_visualize_images(generator, num_images=10)
-    augment_and_retrain(generator, x_train, y_train, x_test, y_test, x_test, y_test)
-
-
+# Main Menu
 def main_menu():
-    (x_train, y_train), (x_val, y_val), (x_test, y_test) = load_triple_mnist()
-    while True:
-        print("\nMain Menu")
-        print("1. Decision Tree")
-        print("2. Basic CNN")
-        print("3. Slightly Developed CNN")
-        print("4. Final CNN")
-        print("5. DCGAN")
-        print("6. Exit")
-        choice = input("Enter your choice: ")
+    print("1. Train Decision Tree Classifier")
+    print("2. Train Basic CNN")
+    print("3. Train Slightly Developed CNN")
+    print("4. Train Final CNN")
+    print("5. Train GAN")
+    choice = int(input("Choose an option: "))
+    train_gen, valid_gen, test_gen = load_triple_mnist()
 
-        if choice == '1':
-            decision_tree_classifier(x_train, y_train, x_val, y_val, x_test, y_test)
-        elif choice == '2':
-            basic_cnn(x_train, y_train, x_val, y_val, x_test, y_test)
-        elif choice == '3':
-            developed_cnn(x_train, y_train, x_val, y_val, x_test, y_test)
-        elif choice == '4':
-            final_cnn(x_train, y_train, x_val, y_val, x_test, y_test)
-        elif choice == '5':
-            dcgan(x_train, y_train, x_test, y_test)
-        elif choice == '6':
-            print("Exiting...")
-            break
-        else:
-            print("Invalid choice. Please try again.")
+    if choice == 1:
+        decision_tree_classifier(train_gen, valid_gen, test_gen)
+    elif choice == 2:
+        basic_cnn(train_gen, valid_gen, test_gen)
+    elif choice == 3:
+        developed_cnn(train_gen, valid_gen, test_gen)
+    elif choice == 4:
+        final_cnn(train_gen, valid_gen, test_gen)
+    elif choice == 5:
+        latent_dim = 100
+        input_shape = train_gen.shape[1:]
+        build_and_train_gan(latent_dim, input_shape, train_gen)
 
-if __name__ == "__main__":
-    main_menu()
+main_menu()
