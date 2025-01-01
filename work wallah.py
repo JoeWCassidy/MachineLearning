@@ -1,182 +1,388 @@
 import tensorflow as tf
+from tensorflow.keras import layers, models, Input, regularizers
 import numpy as np
+from PIL import Image
+from sklearn.metrics import f1_score, accuracy_score, classification_report
 import matplotlib.pyplot as plt
-from tensorflow.keras.datasets import mnist
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import (
-    Conv2D, MaxPooling2D, Flatten, Dense, Dropout, Reshape, Conv2DTranspose, LeakyReLU
-)
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
-from tensorflow.keras.optimizers import Adam
+import os
 
-# Task 1: Generate Triple-MNIST Dataset from MNIST
+# Function to load images from a directory
+def load_images_from_folder(folder, split=False):
+    images = []
+    labels = []
+    for label in os.listdir(folder):
+        label_path = os.path.join(folder, label)
+        if os.path.isdir(label_path):
+            for filename in os.listdir(label_path):
+                img_path = os.path.join(label_path, filename)
+                img = Image.open(img_path).convert('L')
+                if split:
+                    img = img.resize((28, 84))
+                    img_array = np.array(img)
+                    thirds = img_array.shape[1] // 3
+                    split_images = [img_array[:, i*thirds:(i+1)*thirds] for i in range(3)]
+                    images.append(split_images)
+                else:
+                    img = img.resize((28, 28))
+                    img_array = np.array(img)
+                    images.append(img_array)
+                labels.append(int(label) % 10)  # Ensure labels are between 0 and 9
+    return np.array(images), np.array(labels)
 
-# Load MNIST dataset
-(x_train, y_train), (x_test, y_test) = mnist.load_data()
+# Function to load and split images
+def load_split_images_from_folder(folder):
+    images = []
+    labels = []
+    for label in os.listdir(folder):
+        label_path = os.path.join(folder, label)
+        if os.path.isdir(label_path):
+            for filename in os.listdir(label_path):
+                img_path = os.path.join(label_path, filename)
+                img = Image.open(img_path).convert('L')  # Convert image to grayscale
+                img = img.resize((28, 84))  # Resize image to 28x84 for three digits
+                img_array = np.array(img)
+                thirds = img_array.shape[1] // 3
+                split_images = [img_array[:, i*thirds:(i+1)*thirds] for i in range(3)]
+                images.append(split_images)
+                labels.append(int(label) % 10)  # Ensure labels are between 0 and 9
+    return np.array(images), np.array(labels)
 
-# Normalize MNIST images
-x_train = x_train / 255.0
-x_test = x_test / 255.0
+# Load your dataset
+train_folder = r'C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\train'
+val_folder = r'C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\val'
+test_folder = r'C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\test'
 
-# Function to create Triple-MNIST by combining three random digits
-def create_triple_mnist(images, labels, num_samples=10000):
-    new_images = []
-    new_labels = []
-    for _ in range(num_samples):
-        idx = np.random.choice(len(images), 3, replace=False)
-        triple_image = np.hstack((images[idx[0]], images[idx[1]], images[idx[2]]))  # Horizontally stack images
-        triple_label = f"{labels[idx[0]]}{labels[idx[1]]}{labels[idx[2]]}"  # Concatenate labels as strings
-        new_images.append(triple_image)
-        new_labels.append(triple_label)
-    return np.array(new_images), np.array(new_labels)
+# Normalize and reshape data
+def preprocess_data(x, split=False):
+    """
+    Normalizes and reshapes data for CNN input.
+    If split is True, returns data reshaped for 3-channel inputs.
+    """
+    x = x / 255.0
+    if split:
+        return x.reshape((x.shape[0], 3, 28, 28, 1))
+    else:
+        return x.reshape((x.shape[0], 28, 28, 1))
 
-# Create Triple-MNIST dataset
-triple_train_images, triple_train_labels = create_triple_mnist(x_train, y_train, num_samples=5000)
-triple_test_images, triple_test_labels = create_triple_mnist(x_test, y_test, num_samples=1000)
 
-# Split into train and validation sets
-triple_train_images, triple_val_images, triple_train_labels, triple_val_labels = train_test_split(
-    triple_train_images, triple_train_labels, test_size=0.2, random_state=42
-)
+# Create CNN model
+def create_cnn_model():
+    model = models.Sequential([
+        Input(shape=(28, 28, 1)),
+        layers.Conv2D(32, (3, 3), activation='relu'),
+        layers.MaxPooling2D((2, 2)),
+        layers.Conv2D(64, (3, 3), activation='relu'),
+        layers.MaxPooling2D((2, 2)),
+        layers.Conv2D(64, (3, 3), activation='relu'),
+        layers.Flatten(),
+        layers.Dense(128, activation='relu'),
+        layers.Dense(10, activation='softmax')
+    ])
+    return model
 
-# Visualize some Triple-MNIST samples
-def visualize_triple_mnist(images, labels, num_samples=5):
-    plt.figure(figsize=(10, 5))
-    for i in range(num_samples):
-        plt.subplot(1, num_samples, i + 1)
-        plt.imshow(images[i], cmap='gray')
-        plt.title(labels[i])
-        plt.axis('off')
+# Create CNN model with regularization and dropout
+def create_regularized_cnn_model():
+    model = models.Sequential([
+        Input(shape=(28, 28, 1)),
+        layers.Conv2D(32, (3, 3), activation='relu', padding='same', kernel_regularizer=regularizers.l2(0.001)),
+        layers.BatchNormalization(),
+        layers.MaxPooling2D((2, 2)),
+        layers.Dropout(0.3),
+        layers.Conv2D(64, (3, 3), activation='relu', padding='same', kernel_regularizer=regularizers.l2(0.001)),
+        layers.BatchNormalization(),
+        layers.MaxPooling2D((2, 2)),
+        layers.Dropout(0.3),
+        layers.Conv2D(128, (3, 3), activation='relu', padding='same', kernel_regularizer=regularizers.l2(0.001)),
+        layers.BatchNormalization(),
+        layers.MaxPooling2D((2, 2)),
+        layers.Dropout(0.3),
+        layers.Flatten(),
+        layers.Dense(256, activation='relu', kernel_regularizer=regularizers.l2(0.001)),
+        layers.Dropout(0.5),
+        layers.Dense(10, activation='softmax')
+    ])
+    return model
+
+# Create CNN model for separate digits
+def create_digit_cnn_model():
+    digit_model = models.Sequential([
+        Input(shape=(28, 28, 1)),
+        layers.Conv2D(32, (3, 3), activation='relu'),
+        layers.MaxPooling2D((2, 2)),
+        layers.Conv2D(64, (3, 3), activation='relu'),
+        layers.MaxPooling2D((2, 2)),
+        layers.Conv2D(64, (3, 3), activation='relu'),
+        layers.Flatten(),
+        layers.Dense(128, activation='relu')
+    ])
+
+    digit_inputs = [Input(shape=(28, 28, 1)) for _ in range(3)]
+    digit_outputs = [digit_model(digit_input) for digit_input in digit_inputs]
+
+    concatenated = layers.concatenate(digit_outputs)
+    output = layers.Dense(10, activation='softmax')(concatenated)
+
+    combined_model = models.Model(inputs=digit_inputs, outputs=output)
+    return combined_model
+
+# Train and evaluate CNN model
+def train_and_evaluate_cnn(model, x_train, y_train, x_val, y_val, x_test, y_test):
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    history = model.fit(x_train, y_train, epochs=10, validation_data=(x_val, y_val))
+    test_loss, test_acc = model.evaluate(x_test, y_test, verbose=2)
+    print(f'Test accuracy: {test_acc:.2f}')
+    return history
+
+# Plot learning loss and accuracy
+def plot_history(history):
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['accuracy'], label='Train Accuracy')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+    plt.title('Training and Validation Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['loss'], label='Train Loss')
+    plt.plot(history.history['val_loss'], label='Validation Loss')
+    plt.title('Training and Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
     plt.show()
 
-visualize_triple_mnist(triple_train_images, triple_train_labels)
-
-# Preprocessing: Reshape and normalize images for CNN
-triple_train_images = triple_train_images.reshape(-1, 84, 84, 1)
-triple_val_images = triple_val_images.reshape(-1, 84, 84, 1)
-triple_test_images = triple_test_images.reshape(-1, 84, 84, 1)
-
-# Encode labels
-label_encoder = LabelEncoder()
-y_train_encoded = label_encoder.fit_transform(triple_train_labels)
-y_val_encoded = label_encoder.transform(triple_val_labels)
-y_test_encoded = label_encoder.transform(triple_test_labels)
-
-# Convert to one-hot encoding for CNN
-y_train_cnn = tf.keras.utils.to_categorical(y_train_encoded)
-y_val_cnn = tf.keras.utils.to_categorical(y_val_encoded)
-y_test_cnn = tf.keras.utils.to_categorical(y_test_encoded)
-
-# Task 2: Baseline Logistic Regression
-X_flat = triple_train_images.reshape(len(triple_train_images), -1)
-X_val_flat = triple_val_images.reshape(len(triple_val_images), -1)
-
-lr_model = LogisticRegression(max_iter=1000)
-lr_model.fit(X_flat, y_train_encoded)
-y_pred = lr_model.predict(X_val_flat)
-
-print("Logistic Regression Accuracy:", accuracy_score(y_val_encoded, y_pred))
-print("Logistic Regression F1 Score:", f1_score(y_val_encoded, y_pred, average='weighted'))
-print("Logistic Regression Confusion Matrix:\n", confusion_matrix(y_val_encoded, y_pred))
-
-# Task 2: Basic CNN
-cnn_model = Sequential([
-    Conv2D(32, (3, 3), activation='relu', input_shape=(84, 84, 1)),
-    MaxPooling2D((2, 2)),
-    Flatten(),
-    Dense(128, activation='relu'),
-    Dense(len(label_encoder.classes_), activation='softmax')  # Adjust for number of classes
-])
-
-cnn_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-cnn_model.fit(triple_train_images, y_train_cnn, epochs=10, validation_data=(triple_val_images, y_val_cnn))
-
-# Task 4: Advanced Techniques (Data Augmentation)
-datagen = ImageDataGenerator(
-    rotation_range=10,
-    width_shift_range=0.1,
-    height_shift_range=0.1,
-    zoom_range=0.1
-)
-datagen.fit(triple_train_images)
-
-advanced_cnn_model = Sequential([
-    Conv2D(32, (3, 3), activation='relu', input_shape=(84, 84, 1)),
-    MaxPooling2D((2, 2)),
-    Dropout(0.25),
-    Flatten(),
-    Dense(128, activation='relu'),
-    Dropout(0.5),
-    Dense(len(label_encoder.classes_), activation='softmax')
-])
-
-advanced_cnn_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-advanced_cnn_model.fit(datagen.flow(triple_train_images, y_train_cnn, batch_size=32),
-                       epochs=10, validation_data=(triple_val_images, y_val_cnn))
-
-# Task 5: Generative Adversarial Network (GAN)
-
-# GAN Parameters
-latent_dim = 100
-
-# Generator
-def build_generator():
-    model = Sequential([
-        Dense(21 * 21 * 128, input_dim=latent_dim),
-        Reshape((21, 21, 128)),
-        Conv2DTranspose(64, (5, 5), strides=(2, 2), padding='same', activation='relu'),
-        Conv2DTranspose(1, (5, 5), strides=(2, 2), padding='same', activation='tanh')
-    ])
-    return model
-
-# Discriminator
 def build_discriminator():
-    model = Sequential([
-        Conv2D(64, (5, 5), strides=(2, 2), padding='same', input_shape=(84, 84, 1)),
-        LeakyReLU(alpha=0.2),
-        Dropout(0.3),
-        Flatten(),
-        Dense(1, activation='sigmoid')
+    model = models.Sequential([
+        layers.Conv2D(64, (3, 3), strides=(2, 2), padding='same', input_shape=[28, 28, 1]),
+        layers.LeakyReLU(alpha=0.2),
+        layers.Dropout(0.3),
+        layers.Conv2D(128, (3, 3), strides=(2, 2), padding='same'),
+        layers.LeakyReLU(alpha=0.2),
+        layers.Dropout(0.3),
+        layers.Conv2D(256, (3, 3), strides=(2, 2), padding='same'),
+        layers.LeakyReLU(alpha=0.2),
+        layers.Dropout(0.3),
+        layers.Flatten(),
+        layers.Dense(1, activation='sigmoid')
+    ])
+    return model
+def split_and_reshape(imgs):
+    """
+    Splits each image into three parts (columns) and reshapes each part to (28, 28, 1).
+    Ensures the output is a 5D array with dimensions (n_samples, 3, 28, 28, 1).
+    """
+    parts = []
+    for img in imgs:
+        split_imgs = np.split(img, 3, axis=1)  # Split each image into 3 columns
+        for part in split_imgs:
+            if part.shape == (28, 28):  # Ensure the part has correct dimensions
+                parts.append(part.reshape((28, 28, 1)))
+    return np.array(parts).reshape((-1, 3, 28, 28, 1))
+
+
+def build_generator():
+    model = models.Sequential([
+        layers.Dense(7 * 7 * 256, use_bias=False, input_shape=(100,)),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(),
+        layers.Reshape((7, 7, 256)),
+        layers.Conv2DTranspose(128, (5, 5), strides=(1, 1), padding='same', use_bias=False),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(),
+        layers.Conv2DTranspose(64, (5, 5), strides=(2, 2), padding='same', use_bias=False),
+        layers.BatchNormalization(),
+        layers.LeakyReLU(),
+        layers.Conv2DTranspose(1, (5, 5), strides=(2, 2), padding='same', use_bias=False, activation='tanh')
     ])
     return model
 
-# Build and compile GAN
-generator = build_generator()
-discriminator = build_discriminator()
-discriminator.compile(optimizer=Adam(0.0002), loss='binary_crossentropy', metrics=['accuracy'])
+def train_dcgan():
+    discriminator = build_discriminator()
+    discriminator.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
-# GAN Model
-discriminator.trainable = False
-gan_input = tf.keras.Input(shape=(latent_dim,))
-generated_image = generator(gan_input)
-gan_output = discriminator(generated_image)
-gan = tf.keras.Model(gan_input, gan_output)
-gan.compile(optimizer=Adam(0.0002), loss='binary_crossentropy')
+    generator = build_generator()
 
-# Training GAN
-def train_gan(generator, discriminator, gan, epochs=5000, batch_size=64):
+    discriminator.trainable = False
+
+    gan_input = Input(shape=(100,))
+    gan_output = discriminator(generator(gan_input))
+    gan = models.Model(gan_input, gan_output)
+
+    gan.compile(optimizer='adam', loss='binary_crossentropy')
+
+    batch_size = 128
+    epochs = 10000
+    sample_interval = 200
+
+    train_images = preprocess_images(train_folder)  # Ensure images are preprocessed correctly
+
+    real = np.ones((batch_size, 1))
+    fake = np.zeros((batch_size, 1))
+
     for epoch in range(epochs):
-        # Train discriminator
-        idx = np.random.randint(0, triple_train_images.shape[0], batch_size)
-        real_images = triple_train_images[idx]
-        noise = np.random.normal(0, 1, (batch_size, latent_dim))
-        fake_images = generator.predict(noise)
+        # Train Discriminator
+        idx = np.random.randint(0, train_images.shape[0], batch_size)
+        real_imgs = train_images[idx]
+        noise = np.random.normal(0, 1, (batch_size, 100))
+        gen_imgs = generator.predict(noise)
 
-        real_labels = np.ones((batch_size, 1))
-        fake_labels = np.zeros((batch_size, 1))
+        d_loss_real = discriminator.train_on_batch(real_imgs, real)
+        d_loss_fake = discriminator.train_on_batch(gen_imgs, fake)
+        d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
 
-        d_loss_real = discriminator.train_on_batch(real_images, real_labels)
-        d_loss_fake = discriminator.train_on_batch(fake_images, fake_labels)
+        # Train Generator
+        noise = np.random.normal(0, 1, (batch_size, 100))
+        g_loss = gan.train_on_batch(noise, real)
 
-        # Train generator
-        noise = np.random.normal(0, 1, (batch_size, latent_dim))
-        g_loss = gan.train_on_batch(noise, np.ones((batch_size, 1)))
+        if epoch % sample_interval == 0:
+            print(f"{epoch} [D loss: {d_loss[0]}] [D accuracy: {100 * d_loss[1]}%] [G loss: {g_loss}]")
 
-        if epoch % 100 == 0:
-            print(f"Epoch {epoch}: D Loss Real {d_loss_real}, D Loss Fake {d_loss_fake}, G Loss {g_loss}")
+            # Save generated images
+            r, c = 5, 5
+            noise = np.random.normal(0, 1, (r * c, 100))
+            gen_imgs = generator.predict(noise)
+            gen_imgs = 0.5 * gen_imgs + 0.5
 
-train_gan(generator, discriminator, gan)
+            fig, axs = plt.subplots(r, c)
+            cnt = 0
+            for i in range(r):
+                for j in range(c):
+                    axs[i, j].imshow(gen_imgs[cnt, :, :, 0], cmap='gray')
+                    axs[i, j].axis('off')
+                    cnt += 1
+            fig.savefig(f"generated_{epoch}.png")
+            plt.close()
+
+
+        # Logistic Regression
+def logistic_regression(x_train_flattened, y_train, x_test_flattened, y_test):
+    log_reg_model = LogisticRegression(max_iter=1000)
+    log_reg_model.fit(x_train_flattened, y_train)
+
+    y_test_pred = log_reg_model.predict(x_test_flattened)
+    test_acc = accuracy_score(y_test, y_test_pred)
+    print(f'Test accuracy: {test_acc:.2f}')
+    print(classification_report(y_test, y_test_pred))
+
+
+def main():
+    print("Select the model to run:")
+    print("1. CNN Iteration 1: Whole Image")
+    print("2. CNN Iteration 2: Separate Digits")
+    print("3. CNN Iteration 3: Data Regularization and Augmentation")
+    print("4. DCGAN")
+    print("5. Logistic Regression")
+
+    choice = int(input("Enter the number of your choice: "))
+
+    if choice == 1 or choice == 5:
+        x_train, y_train = load_images_from_folder(train_folder)
+        x_val, y_val = load_images_from_folder(val_folder)
+        x_test, y_test = load_images_from_folder(test_folder)
+    elif choice == 2 or choice == 3:
+        x_train, y_train = load_split_images_from_folder(train_folder)
+        x_val, y_val = load_split_images_from_folder(val_folder)
+        x_test, y_test = load_split_images_from_folder(test_folder)
+
+    if choice == 1:
+        print("Running CNN Iteration 1: Whole Image")
+        x_train_p, x_val_p, x_test_p = preprocess_data(x_train), preprocess_data(x_val), preprocess_data(x_test)
+        model = create_cnn_model()
+        history = train_and_evaluate_cnn(model, x_train_p, y_train, x_val_p, y_val, x_test_p, y_test)
+        plot_history(history)
+    elif choice == 2:
+        print("Running CNN Iteration 2: Separate Digits")
+        
+        # Normalize the data and split into three parts
+        x_train_p = split_and_reshape(x_train)  # Pass original x_train for splitting
+        x_val_p = split_and_reshape(x_val)
+        x_test_p = split_and_reshape(x_test)
+
+        # Create the CNN model for each digit
+        model = create_digit_cnn_model()
+        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+        # Train the model
+        history = model.fit(
+            [x_train_p[:, i, :, :, :] for i in range(3)], y_train,  # Pass slices for 3 inputs
+            epochs=10,
+            validation_data=([x_val_p[:, i, :, :, :] for i in range(3)], y_val)
+        )
+
+        # Evaluate the model
+        test_loss, test_acc = model.evaluate(
+            [x_test_p[:, i, :, :, :] for i in range(3)], y_test, verbose=2
+        )
+        print(f'Test accuracy: {test_acc:.2f}')
+        plot_history(history)
+
+    elif choice == 3:
+        print("Running CNN Iteration 3: Data Regularization and Augmentation with Split Images")
+
+        # Normalize the data and split into three parts
+        x_train_p = split_and_reshape(x_train)  # Pass original x_train for splitting
+        x_val_p = split_and_reshape(x_val)
+        x_test_p = split_and_reshape(x_test)
+
+        # Flatten the data for augmentation
+        x_train_flat = x_train_p.reshape(-1, 28, 28, 1)
+        y_train_tiled = np.repeat(y_train, 3)  # Match the repeated image data length
+
+        # Data augmentation
+        datagen = ImageDataGenerator(
+            rotation_range=20,
+            width_shift_range=0.2,
+            height_shift_range=0.2,
+            zoom_range=0.2,
+            horizontal_flip=True,
+            brightness_range=[0.7, 1.3]
+        )
+        datagen.fit(x_train_flat)  # Fit on the flattened array
+
+        # Create a regularized CNN model
+        model = create_regularized_cnn_model()
+        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+        # Early stopping
+        early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
+        # Training the model with augmented data
+        history = model.fit(
+            datagen.flow(x_train_flat, y_train_tiled, batch_size=32),
+            epochs=50,
+            validation_data=(x_val_p.reshape(-1, 28, 28, 1), np.repeat(y_val, 3)),
+            callbacks=[early_stopping]
+        )
+
+        # Evaluate the model
+        test_loss, test_acc = model.evaluate(
+            x_test_p.reshape(-1, 28, 28, 1), np.repeat(y_test, 3), verbose=2
+        )
+        print(f'Test accuracy: {test_acc:.2f}')
+        plot_history(history)
+
+    elif choice == 4:
+        print("Running DCGAN")
+        train_dcgan()
+    elif choice == 5:
+        print("Running Logistic Regression")
+        x_train_flattened = x_train.reshape(x_train.shape[0], -1)
+        x_test_flattened = x_test.reshape(x_test.shape[0], -1)
+        log_reg_model = LogisticRegression(max_iter=1000)
+        log_reg_model.fit(x_train_flattened, y_train)
+        y_test_pred = log_reg_model.predict(x_test_flattened)
+        test_acc = accuracy_score(y_test, y_test_pred)
+        print(f'Test accuracy: {test_acc:.2f}')
+        print(classification_report(y_test, y_test_pred))
+    else:
+        print("Invalid choice. Please select a valid option from the menu.")
+        exit()
+
+if __name__ == "__main__":
+    while True:
+        main()
+
