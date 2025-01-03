@@ -1,5 +1,5 @@
 import os
-import tf
+import tensorflow as tf
 import numpy as np
 from PIL import Image
 from tensorflow.keras import layers, models

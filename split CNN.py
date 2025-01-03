@@ -81,18 +81,33 @@ def create_multi_output_cnn_model():
 
 # Train and evaluate the updated CNN
 def train_and_evaluate_multi_output_cnn(model, x_train, y_train, x_val, y_val, x_test, y_test):
-    model.compile(optimizer='adam', 
-                  loss={'digit1': 'sparse_categorical_crossentropy', 
-                        'digit2': 'sparse_categorical_crossentropy', 
-                        'digit3': 'sparse_categorical_crossentropy'},
-                  metrics=['accuracy'])
-    history = model.fit(x_train, {'digit1': y_train[:, 0], 'digit2': y_train[:, 1], 'digit3': y_train[:, 2]},
-                        epochs=10, 
-                        validation_data=(x_val, 
-                                         {'digit1': y_val[:, 0], 'digit2': y_val[:, 1], 'digit3': y_val[:, 2]}))
-    test_loss = model.evaluate(x_test, 
-                               {'digit1': y_test[:, 0], 'digit2': y_test[:, 1], 'digit3': y_test[:, 2]}, 
-                               verbose=2)
+    model.compile(
+        optimizer='adam', 
+        loss={
+            'digit1': 'sparse_categorical_crossentropy', 
+            'digit2': 'sparse_categorical_crossentropy', 
+            'digit3': 'sparse_categorical_crossentropy'
+        },
+        metrics={
+            'digit1': ['accuracy'],
+            'digit2': ['accuracy'],
+            'digit3': ['accuracy']
+        }
+    )
+    history = model.fit(
+        x_train, 
+        {'digit1': y_train[:, 0], 'digit2': y_train[:, 1], 'digit3': y_train[:, 2]},
+        epochs=10, 
+        validation_data=(
+            x_val, 
+            {'digit1': y_val[:, 0], 'digit2': y_val[:, 1], 'digit3': y_val[:, 2]}
+        )
+    )
+    test_loss = model.evaluate(
+        x_test, 
+        {'digit1': y_test[:, 0], 'digit2': y_test[:, 1], 'digit3': y_test[:, 2]}, 
+        verbose=2
+    )
     print(f'Test loss: {test_loss}')
 
     # Generate predictions for the test set

@@ -1,3 +1,10 @@
+import os
+import numpy as np
+from PIL import Image
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report
+import matplotlib.pyplot as plt
+
 def logistic_regression(x_train_flattened, y_train, x_test_flattened, y_test):
     log_reg_model = LogisticRegression(max_iter=1000)
     log_reg_model.fit(x_train_flattened, y_train)
