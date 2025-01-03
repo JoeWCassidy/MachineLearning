@@ -1,0 +1,48 @@
+Traceback (most recent call last):
+  File "C:/Users/josep/Desktop/why.py", line 197, in <module>
+    cnn_model.fit(train_images_cnn, train_labels, epochs=5, validation_split=0.1)
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\utils\traceback_utils.py", line 122, in error_handler
+    raise e.with_traceback(filtered_tb) from None
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\tensorflow\python\eager\execute.py", line 59, in quick_execute
+    except TypeError as e:
+tensorflow.python.framework.errors_impl.InvalidArgumentError: Graph execution error:
+
+Detected at node compile_loss/sparse_categorical_crossentropy/SparseSoftmaxCrossEntropyWithLogits/SparseSoftmaxCrossEntropyWithLogits defined at (most recent call last):
+  File "<string>", line 1, in <module>
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\idlelib\run.py", line 165, in main
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\idlelib\run.py", line 580, in runcode
+
+  File "C:/Users/josep/Desktop/why.py", line 197, in <module>
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\utils\traceback_utils.py", line 117, in error_handler
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\backend\tensorflow\trainer.py", line 318, in fit
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\backend\tensorflow\trainer.py", line 121, in one_step_on_iterator
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\backend\tensorflow\trainer.py", line 108, in one_step_on_data
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\backend\tensorflow\trainer.py", line 54, in train_step
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\trainers\trainer.py", line 357, in _compute_loss
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\trainers\trainer.py", line 325, in compute_loss
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\trainers\compile_utils.py", line 609, in __call__
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\trainers\compile_utils.py", line 645, in call
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\losses\loss.py", line 43, in __call__
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\losses\losses.py", line 27, in call
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\losses\losses.py", line 1853, in sparse_categorical_crossentropy
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\ops\nn.py", line 1567, in sparse_categorical_crossentropy
+
+  File "C:\Users\josep\AppData\Local\Programs\Python\Python312\Lib\site-packages\keras\src\backend\tensorflow\nn.py", line 645, in sparse_categorical_crossentropy
+
+Received a label value of 863 which is outside the valid range of [0, 30).  Label values: 863 41 728 564 169 728 734 721 233 685 600 327 725 338 430 529 61 331 518 20 185 479 379 848 476 689 242 764 640 640 84 275
+	 [[{{node compile_loss/sparse_categorical_crossentropy/SparseSoftmaxCrossEntropyWithLogits/SparseSoftmaxCrossEntropyWithLogits}}]] [Op:__inference_one_step_on_iterator_1599]
