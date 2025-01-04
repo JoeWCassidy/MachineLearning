@@ -1,127 +1,121 @@
-import tensorflow as tf
-from tensorflow.keras.models import Sequential, Model
-from tensorflow.keras.layers import Input, Dense, Reshape, Flatten, BatchNormalization, LeakyReLU, Conv2DTranspose, Conv2D
-from tensorflow.keras.optimizers import Adam
+import os
 import numpy as np
-import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from tensorflow.keras.regularizers import l2
+from sklearn.metrics import classification_report, f1_score
 
-# Generator Model
-def build_generator(noise_dim):
-    model = Sequential([
-        Input(shape=(noise_dim,)),
-        Dense(7 * 21 * 256),
-        LeakyReLU(negative_slope=0.2),
-        Reshape((7, 21, 256)),
-        BatchNormalization(momentum=0.8),
-        Conv2DTranspose(128, kernel_size=3, strides=2, padding="same"),
-        LeakyReLU(negative_slope=0.2),
-        BatchNormalization(momentum=0.8),
-        Conv2DTranspose(64, kernel_size=3, strides=2, padding="same"),
-        LeakyReLU(negative_slope=0.2),
-        BatchNormalization(momentum=0.8),
-        Conv2D(1, kernel_size=3, activation="tanh", padding="same")
-    ])
+# Load full images
+def load_full_images(folder):
+    images = []
+    labels = []
+    for label_folder in os.listdir(folder):
+        label_path = os.path.join(folder, label_folder)
+        if os.path.isdir(label_path):
+            for part_file in os.listdir(label_path):
+                part_path = os.path.join(label_path, part_file)
+                try:
+                    img = tf.keras.preprocessing.image.load_img(part_path, color_mode="grayscale", target_size=(84, 84))
+                    images.append(np.array(img))
+                    labels.append(int(label_folder))  # Use folder name as the label
+                except Exception as e:
+                    print(f"Error loading image {part_path}: {e}")
+    return np.array(images), np.array(labels)
+
+# Preprocessing for CNN
+def preprocess_for_cnn(images):
+    images = images / 255.0  # Normalize pixel values
+    return images.reshape(-1, 84, 84, 1)  # Add channel dimension
+
+# Split labels into three digits
+def split_labels(labels):
+    return np.array([[int(str(label).zfill(3)[0]), int(str(label).zfill(3)[1]), int(str(label).zfill(3)[2])] for label in labels])
+
+# Define Final CNN model
+def create_final_cnn():
+    base_input = layers.Input(shape=(84, 84, 1))
+    x = layers.Conv2D(32, (3, 3), activation='relu', kernel_regularizer=l2(0.001))(base_input)
+    x = layers.MaxPooling2D((2, 2))(x)
+    x = layers.Conv2D(64, (3, 3), activation='relu', kernel_regularizer=l2(0.001))(x)
+    x = layers.MaxPooling2D((2, 2))(x)
+    x = layers.Conv2D(64, (3, 3), activation='relu', kernel_regularizer=l2(0.001))(x)
+    x = layers.Flatten()(x)
+    x = layers.Dense(128, activation='relu', kernel_regularizer=l2(0.001))(x)
+    x = layers.Dropout(0.5)(x)
+
+    # Three outputs for the three digits
+    digit1_output = layers.Dense(10, activation='softmax', name='digit1')(x)
+    digit2_output = layers.Dense(10, activation='softmax', name='digit2')(x)
+    digit3_output = layers.Dense(10, activation='softmax', name='digit3')(x)
+
+    model = models.Model(inputs=base_input, outputs=[digit1_output, digit2_output, digit3_output])
     return model
 
-# Discriminator Model
-def build_discriminator(img_shape):
-    model = Sequential([
-        Input(shape=img_shape),
-        Conv2D(64, kernel_size=3, strides=2, padding="same"),
-        LeakyReLU(negative_slope=0.2),
-        Flatten(),
-        Dense(128),
-        LeakyReLU(negative_slope=0.2),
-        Dense(1, activation="sigmoid")
-    ])
-    return model
+# Train and evaluate Final CNN
+def train_and_evaluate_final_cnn(model, x_train, y_train, x_val, y_val, x_test, y_test):
+    model.compile(
+        optimizer='adam',
+        loss={
+            'digit1': 'sparse_categorical_crossentropy',
+            'digit2': 'sparse_categorical_crossentropy',
+            'digit3': 'sparse_categorical_crossentropy'
+        },
+        metrics={
+            'digit1': ['accuracy'],
+            'digit2': ['accuracy'],
+            'digit3': ['accuracy']
+        }
+    )
 
-# Assemble GAN
-def build_gan(generator, discriminator):
-    discriminator.trainable = False
-    model = Sequential([generator, discriminator])
-    return model
+    # Train the model
+    model.fit(
+        x_train,
+        {'digit1': y_train[:, 0], 'digit2': y_train[:, 1], 'digit3': y_train[:, 2]},
+        validation_data=(
+            x_val,
+            {'digit1': y_val[:, 0], 'digit2': y_val[:, 1], 'digit3': y_val[:, 2]}
+        ),
+        epochs=10,
+        batch_size=32
+    )
 
-# Save Generated Images
-def save_generated_images(epoch, generator, noise_dim, examples=5, dim=(1, 5), figsize=(15, 2)):
-    noise = np.random.normal(0, 1, (examples, noise_dim))
-    gen_imgs = generator.predict(noise)
-    gen_imgs = 0.5 * gen_imgs + 0.5  # Rescale to [0, 1]
+    # Evaluate the model on test data
+    test_loss = model.evaluate(
+        x_test,
+        {'digit1': y_test[:, 0], 'digit2': y_test[:, 1], 'digit3': y_test[:, 2]},
+        verbose=2
+    )
 
-    plt.figure(figsize=figsize)
-    for i in range(examples):
-        plt.subplot(dim[0], dim[1], i + 1)
-        plt.imshow(gen_imgs[i, :, :, 0], cmap="gray")
-        plt.axis("off")
-    plt.tight_layout()
-    plt.savefig(f"triple_mnist_generated_epoch_{epoch}.png")
-    plt.close()
+    print(f"Test loss: {test_loss}")
 
-# Training Function
-def train_dcgan(generator, discriminator, gan, train_data, epochs, batch_size, noise_dim, save_interval):
-    valid = np.ones((batch_size, 1)) * 0.9  # Label smoothing
-    fake = np.zeros((batch_size, 1)) * 0.1
+    # Predict and evaluate
+    y_pred = model.predict(x_test)
+    y_pred_classes = [np.argmax(pred, axis=1) for pred in y_pred]
 
-    for epoch in range(epochs):
-        # Train Discriminator
-        discriminator.trainable = True
-        idx = np.random.randint(0, train_data.shape[0], batch_size)
-        real_imgs = train_data[idx]
+    # Print F1 score for each digit
+    for i in range(3):
+        print(f"F1 score for digit {i+1}: {f1_score(y_test[:, i], y_pred_classes[i], average='macro'):.4f}")
 
-        noise = np.random.normal(0, 1, (batch_size, noise_dim))
-        gen_imgs = generator.predict(noise)
+# Paths to datasets
+train_folder = r'C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\train'
+val_folder = r'C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\val'
+test_folder = r'C:\Users\josep\Documents\GitHub\MachineLearning\dataset2\triple_mnist\test'
 
-        d_loss_real = discriminator.train_on_batch(real_imgs, valid)
-        d_loss_fake = discriminator.train_on_batch(gen_imgs, fake)
-        d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
+# Load datasets
+x_train, y_train = load_full_images(train_folder)
+x_val, y_val = load_full_images(val_folder)
+x_test, y_test = load_full_images(test_folder)
 
-        # Train Generator
-        discriminator.trainable = False
-        noise = np.random.normal(0, 1, (batch_size, noise_dim))
-        g_loss = gan.train_on_batch(noise, valid)
+# Preprocess datasets
+x_train_cnn = preprocess_for_cnn(x_train)
+x_val_cnn = preprocess_for_cnn(x_val)
+x_test_cnn = preprocess_for_cnn(x_test)
 
-        # Safely handle printing losses
-        d_loss_val = d_loss[0] if isinstance(d_loss, (list, np.ndarray)) else d_loss
-        g_loss_val = g_loss[0] if isinstance(g_loss, (list, np.ndarray)) else g_loss
+# Split labels
+y_train_split = split_labels(y_train)
+y_val_split = split_labels(y_val)
+y_test_split = split_labels(y_test)
 
-        # Print progress
-        print(f"Epoch {epoch + 1}/{epochs} [D loss: {d_loss_val:.4f}, acc.: {100 * d_loss[1]:.2f}%] [G loss: {g_loss_val:.4f}]")
-
-        # Save generated images at intervals
-        if (epoch + 1) % save_interval == 0:
-            save_generated_images(epoch + 1, generator, noise_dim)
-
-# Load and preprocess Triple MNIST data
-def load_triple_mnist():
-    (x_train, _), (_, _) = tf.keras.datasets.mnist.load_data()
-    x_train = x_train / 127.5 - 1.0  # Normalize to [-1, 1]
-    x_train = np.expand_dims(x_train, axis=-1)  # Add channel dimension
-
-    # Create Triple MNIST data by horizontally stacking 3 random images
-    triple_data = []
-    for _ in range(len(x_train)):
-        digits = np.random.choice(len(x_train), 3, replace=False)
-        triple_img = np.hstack([x_train[digits[0]], x_train[digits[1]], x_train[digits[2]]])
-        triple_data.append(triple_img)
-
-    triple_data = np.expand_dims(np.array(triple_data), axis=-1)
-    return triple_data
-
-# Hyperparameters
-img_shape = (28, 84, 1)  # Adjusted for 28x84 combined images
-noise_dim = 100
-epochs = 5000
-batch_size = 32
-save_interval = 500
-
-# Build and compile models
-generator = build_generator(noise_dim)
-discriminator = build_discriminator(img_shape)
-discriminator.compile(optimizer=Adam(learning_rate=0.0002, beta_1=0.5), loss="binary_crossentropy", metrics=["accuracy"])
-
-gan = build_gan(generator, discriminator)
-gan.compile(optimizer=Adam(learning_rate=0.0002, beta_1=0.5), loss="binary_crossentropy")
-
-# Load data and train the DCGAN
-train_data = load_triple_mnist()
-train_dcgan(generator, discriminator, gan, train_data, epochs, batch_size, noise_dim, save_interval)
+# Create and train the model
+final_cnn_model = create_final_cnn()
+train_and_evaluate_final_cnn(final_cnn_model, x_train_cnn, y_train_split, x_val_cnn, y_val_split, x_test_cnn, y_test_split)
