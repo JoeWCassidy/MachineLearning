@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 from tensorflow.keras import layers, models
 from tensorflow.keras.utils import to_categorical
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, f1_score, precision_recall_fscore_support
 import matplotlib.pyplot as plt
 
 # Directories for datasets
@@ -84,8 +84,14 @@ def train_and_evaluate_full_image_cnn(model, x_train, y_train, x_val, y_val, x_t
     y_test_pred_labels = np.array([int("".join(map(str, digits))) for digits in y_test_pred_digits])
     y_test_actual_labels = np.array([int("".join(map(str, digits))) for digits in y_test_actual_digits])
     
-    # Print classification report
-    print(classification_report(y_test_actual_labels, y_test_pred_labels))
+    # Calculate weighted F1 score
+    f1 = f1_score(y_test_actual_labels, y_test_pred_labels, average='weighted')
+    print(f"Weighted F1 Score: {f1:.2f}")
+    
+    # Print classification report with zero_division handling
+    print("\nClassification Report:")
+    print(classification_report(y_test_actual_labels, y_test_pred_labels, zero_division=1))
+    
     return history
 
 # Load the datasets
