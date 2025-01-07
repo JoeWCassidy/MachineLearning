@@ -1,0 +1,77 @@
+Scores Regression 
+Weighted F1 Score: 0.00
+              precision    recall  f1-score   support
+
+
+
+    accuracy                           0.00   20000.0
+   macro avg       0.24      0.76      0.00   20000.0
+weighted avg       1.00      0.00      0.00   20000.0Split CNN 
+Classification report for digit 1:
+              precision    recall  f1-score   support
+
+           0       0.99      0.97      0.98      2500
+           1       0.97      0.99      0.98      1800
+           2       0.93      0.99      0.96      1600
+           3       0.99      0.98      0.98      2500
+           4       0.99      0.97      0.98      2900
+           5       0.98      0.96      0.97      1800
+           6       0.91      0.99      0.95      1400
+           7       0.99      0.96      0.98      1600
+           8       0.99      0.96      0.97      2400
+           9       0.96      0.97      0.96      1500
+
+    accuracy                           0.97     20000
+   macro avg       0.97      0.97      0.97     20000
+weighted avg       0.97      0.97      0.97     20000
+
+Classification report for digit 2:
+              precision    recall  f1-score   support
+
+           0       0.98      0.99      0.98      1600
+           1       0.99      0.99      0.99      2300
+           2       0.97      0.98      0.98      1600
+           3       0.97      0.98      0.98      1700
+           4       0.98      0.98      0.98      1900
+           5       0.99      0.97      0.98      2300
+           6       0.96      0.99      0.98      2600
+           7       0.98      0.97      0.98      1500
+           8       0.99      0.96      0.97      2300
+           9       0.98      0.97      0.98      2200
+
+    accuracy                           0.98     20000
+   macro avg       0.98      0.98      0.98     20000
+weighted avg       0.98      0.98      0.98     20000
+
+Classification report for digit 3:
+              precision    recall  f1-score   support
+
+           0       0.99      0.98      0.98      2200
+           1       0.98      0.99      0.98      1700
+           2       0.96      0.99      0.97      1700
+           3       0.97      0.98      0.97      1600
+           4       0.97      0.97      0.97      1800
+           5       1.00      0.95      0.97      2600
+           6       0.97      0.99      0.98      2500
+           7       0.99      0.97      0.98      1900
+           8       0.93      0.99      0.96      2000
+           9       0.98      0.96      0.97      2000
+
+    accuracy                           0.97     20000
+   macro avg       0.97      0.98      0.97     20000
+weighted avg       0.97      0.97      0.97     20000
+
+Basic CNN
+    accuracy                           0.00   20000.0
+   macro avg       1.00      0.00      0.00   20000.0
+weighted avg       1.00      0.00      0.00   20000.0
+
+DCGAN 
+625/625 ━━━━━━━━━━━━━━━━━━━━ 15s 24ms/step
+F1 score for digit 1: 0.9811
+F1 score for digit 2: 0.9818
+F1 score for digit 3: 0.9820
+Advanced CNN 
+    accuracy                           0.92     20000
+   macro avg       0.27      0.25      0.26     20000
+weighted avg       0.98      0.92      0.95     20000
